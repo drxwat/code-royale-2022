@@ -16,7 +16,13 @@ import { Enemy, ScanningInfo, StateMeta } from "./interfaces";
 import { UnitStratagyState } from "./states/abstract-state";
 import { UnitScanState } from "./states/scan-state";
 import { HIDING_TIME_LIMIT } from "./variables";
-import { addVec2, angleVec2VecRad, disntaceVec2Vec } from "./vector-math";
+import {
+  addVec2,
+  angleVec2VecRad,
+  diffVec2,
+  disntaceVec2Vec,
+  normalizeVec,
+} from "./vector-math";
 
 export class UnitStrategy {
   private state: UnitStratagyState = new UnitScanState(this);
@@ -76,6 +82,12 @@ export class UnitStrategy {
       time: game.currentTick / constants.ticksPerSecond,
       scanningInfo: this.scanningInfo,
       isHiding: this.isHiding,
+      distanceToZoneEdge:
+        game.zone.currentRadius -
+        disntaceVec2Vec(game.zone.currentCenter, unit.position),
+      zoneEdgeDirection: normalizeVec(
+        diffVec2(unit.position, game.zone.currentCenter)
+      ),
     };
   }
 

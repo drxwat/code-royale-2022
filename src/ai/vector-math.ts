@@ -51,6 +51,11 @@ export function degToRad(deg: number) {
   return (deg & Math.PI) / 180;
 }
 
+export function normalizeVec(vec: Vec2) {
+  const length = lengthVec2(vec);
+  return new Vec2(vec.x / length, vec.y / length);
+}
+
 export function isAngleBetween(
   angle: number,
   angle_a: number,

@@ -4,7 +4,11 @@ import { UnitOrder } from "../../model/unit-order";
 import { Vec2 } from "../../model/vec2";
 import { FLEE_SECTOR } from "../constants";
 import { Enemy, StateMeta } from "../interfaces";
-import { FLEE_MAX_ENEMIES, FLEE_MAX_ENEMIES_HIDING } from "../variables";
+import {
+  FLEE_MAX_ENEMIES,
+  FLEE_MAX_ENEMIES_HIDING,
+  ZONE_EDGE_DISTANCE,
+} from "../variables";
 import {
   degToRad,
   diffVec2,
@@ -142,10 +146,17 @@ export class UnitScanState extends UnitStratagyState {
         }
       });
     // Zone  Impact
-    const distanceToZoneEdge =
-      meta.game.zone.currentRadius -
-      disntaceVec2Vec(meta.game.zone.currentCenter, meta.unit.position);
-    console.log("Zone Edge Distance ", distanceToZoneEdge);
+    if (meta.distanceToZoneEdge < ZONE_EDGE_DISTANCE) {
+      const zoneEdgeAngle = vec2ToAngle(meta.zoneEdgeDirection);
+      const zoneEdgeMinSector = zoneEdgeAngle - FLEE_SECTOR;
+      const zoneEdgeMaxSector = zoneEdgeAngle + FLEE_SECTOR;
+
+      Array.from(sectorSafety.keys()).map((sector) => {
+        if (sector > zoneEdgeMinSector && sector < zoneEdgeMaxSector) {
+          sectorSafety.set(sector, 0);
+        }
+      });
+    }
 
     return sectorSafety;
   }
