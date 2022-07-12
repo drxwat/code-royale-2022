@@ -7,11 +7,14 @@ import { DEBUG_COMMANDS, DEBUG_INTERFACE } from "../my-strategy";
 import {
   COLOR_BLUE,
   COLOR_DANGER,
+  COLOR_DEADLY,
   COLOR_RED,
   COLOR_SAFE,
   COLOR_SAFEST,
+  COLOR_WARNING,
   FLEE_SECTOR,
 } from "./constants";
+import { getTheSafestSectors } from "./helpers/common.helpers";
 import { Enemy, ScanningInfo, StateMeta } from "./interfaces";
 import { UnitStratagyState } from "./states/abstract-state";
 import { UnitScanState } from "./states/scan-state";
@@ -22,6 +25,7 @@ import {
   diffVec2,
   disntaceVec2Vec,
   normalizeVec,
+  vec2ToAngle,
 } from "./vector-math";
 
 export class UnitStrategy {
@@ -74,6 +78,13 @@ export class UnitStrategy {
    * Can change between input and evaluateState methods
    */
   private getMeta(unit: Unit, game: Game, constants: Constants): StateMeta {
+    const moveDirection = this.lastOrder?.targetDirection;
+    let currentMovingSector: number | undefined;
+    if (this.scanningInfo?.sectorSafety && moveDirection) {
+      currentMovingSector = Array.from(
+        this.scanningInfo?.sectorSafety?.keys()
+      ).find((sector) => sector + FLEE_SECTOR > vec2ToAngle(moveDirection));
+    }
     return {
       unit,
       game,
@@ -88,8 +99,12 @@ export class UnitStrategy {
       zoneEdgeDirection: normalizeVec(
         diffVec2(unit.position, game.zone.currentCenter)
       ),
+      currentMovingSector,
     };
   }
+  /**
+   * DEBUG INTERFACE
+   */
 
   private displayDebugInterface(meta: StateMeta) {
     this.displayInfo(meta);
@@ -138,24 +153,28 @@ export class UnitStrategy {
     const sectorSafety = this.scanningInfo?.sectorSafety;
     if (moveDirection && sectorSafety && DEBUG_INTERFACE) {
       const sectorSafetyTupple = Array.from(sectorSafety);
-      const theSafestSector = sectorSafetyTupple.reduce(
-        ([safestSector, maxSafety], [sector, safety]) => {
-          if (safety > maxSafety) {
-            return [sector, safety];
-          }
-          return [safestSector, maxSafety];
-        },
-        sectorSafetyTupple[0]
-      );
+      const theSafestSectors = getTheSafestSectors(sectorSafety);
 
       sectorSafetyTupple.forEach(([sector, safety]) => {
+        let sectorColor = COLOR_SAFE;
+        if (safety === theSafestSectors[0]) {
+          sectorColor = COLOR_SAFEST;
+        } else if (safety < 0) {
+          sectorColor = COLOR_DEADLY;
+        } else if (safety < 1) {
+          sectorColor = COLOR_DANGER;
+        } else if (safety < 2) {
+          sectorColor = COLOR_WARNING;
+        } else {
+          sectorColor = COLOR_SAFE;
+        }
         DEBUG_COMMANDS.push(async () => {
           await DEBUG_INTERFACE?.addPie(
             meta.unit.position,
-            25,
+            meta.constants.viewDistance,
             sector,
             sector + FLEE_SECTOR,
-            safety === theSafestSector[1]
+            safety === theSafestSectors[0]
               ? COLOR_SAFEST
               : safety >= 1
               ? COLOR_SAFE

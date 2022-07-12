@@ -25,4 +25,5 @@ export interface StateMeta {
   distanceToZoneEdge: number;
   zoneEdgeDirection: Vec2;
   scanningInfo?: ScanningInfo;
+  currentMovingSector?: number;
 }

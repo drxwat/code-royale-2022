@@ -1,17 +1,7 @@
 import { ActionOrder } from "../../model/action-order";
 import { StateMeta } from "../interfaces";
-import { PICK_UP_CLOSE_DISNTANCE, SHIELD_MIN_THRESHOLD } from "../variables";
-import { Item } from "../../model/item";
-import { Vec2 } from "../../model/vec2";
-import { disntaceVec2Vec } from "../vector-math";
-
-const isSheldPotion = (item: Item): boolean => {
-  return "amount" in item && !("weaponTypeIndex" in item);
-};
-
-const itCloseDistance = (from: Vec2, to: Vec2) => {
-  return disntaceVec2Vec(from, to) < PICK_UP_CLOSE_DISNTANCE;
-};
+import { SHIELD_MIN_THRESHOLD } from "../variables";
+import { isSheldPotion, itCloseDistance } from "./common.helpers";
 
 export function takeAction(
   meta: StateMeta,

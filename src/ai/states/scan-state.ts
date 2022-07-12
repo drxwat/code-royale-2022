@@ -148,12 +148,12 @@ export class UnitScanState extends UnitStratagyState {
     // Zone  Impact
     if (meta.distanceToZoneEdge < ZONE_EDGE_DISTANCE) {
       const zoneEdgeAngle = vec2ToAngle(meta.zoneEdgeDirection);
-      const zoneEdgeMinSector = zoneEdgeAngle - FLEE_SECTOR;
-      const zoneEdgeMaxSector = zoneEdgeAngle + FLEE_SECTOR;
+      const zoneEdgeMinSector = zoneEdgeAngle - FLEE_SECTOR * 2;
+      const zoneEdgeMaxSector = zoneEdgeAngle + FLEE_SECTOR * 2;
 
       Array.from(sectorSafety.keys()).map((sector) => {
         if (sector > zoneEdgeMinSector && sector < zoneEdgeMaxSector) {
-          sectorSafety.set(sector, 0);
+          sectorSafety.set(sector, -1);
         }
       });
     }
