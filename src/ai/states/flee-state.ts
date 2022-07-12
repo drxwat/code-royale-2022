@@ -1,28 +1,28 @@
+import { Action } from "../../model/action";
 import { ActionOrder } from "../../model/action-order";
 import { Loot } from "../../model/loot";
 import { UnitOrder } from "../../model/unit-order";
 import { Vec2 } from "../../model/vec2";
 import { DEBUG_COMMANDS, DEBUG_INTERFACE } from "../../my-strategy";
 import { COLOR_RED, FLEE_SECTOR } from "../constants";
-import { getTheSafestSectors, isSheldPotion } from "../helpers/common.helpers";
-import { SectorSafety, StateMeta } from "../interfaces";
-import { FLEE_DURATION } from "../variables";
+import { takeAction } from "../helpers/action";
 import {
-  angleToVec2,
-  diffVec2,
-  disntaceVec2Vec,
-  isAngleBetween,
-  mulVec2byScalar,
-  normalizeVec,
-  vec2ToAngle,
-} from "../vector-math";
+  angleToVector,
+  getTheSafestSector,
+  isSheldPotion,
+  isVectorInSector,
+} from "../helpers/common.helpers";
+import { MetaLoot, SectorSafety, StateMeta } from "../interfaces";
+import { FLEE_DURATION } from "../variables";
+
 import { UnitStratagyState } from "./abstract-state";
 import { UnitScanState } from "./scan-state";
 
 export class UnitFleeState extends UnitStratagyState {
   debugName = "FleeState";
   moveDirection: Vec2 | undefined;
-  lootToPickup: Loot | undefined;
+  lootToPickup: MetaLoot | undefined | null;
+  lootinAction: Action | undefined;
   sectorSafety: Map<number, number> | undefined;
   fleeTimeLimit: number | undefined;
 
@@ -35,67 +35,85 @@ export class UnitFleeState extends UnitStratagyState {
     if (this.fleeTimeLimit === undefined) {
       this.fleeTimeLimit = meta.time + FLEE_DURATION;
     }
-    if (meta.time < this.fleeTimeLimit) {
-      return this;
-    } else {
+
+    if (this.lootToPickup && meta.unit.action) {
+      this.lootinAction = meta.unit.action;
+    }
+    if (this.lootinAction && this.hasFinishedLooting(this.lootinAction, meta)) {
+      this.lootToPickup = undefined;
+    }
+    if (!this.isGoingToLoot() && meta.time > this.fleeTimeLimit) {
       return new UnitScanState(this.strategy);
     }
+    return this;
   }
 
   evaluateState(meta: StateMeta): UnitOrder {
     if (!(this.moveDirection || this.lootToPickup) && this.sectorSafety) {
-      const { safestMoveDirection, closestPotion } = this.calculateSafest(
-        meta,
-        this.sectorSafety
-      );
-      this.moveDirection = safestMoveDirection;
+      this.moveDirection = this.calculateSafest(meta, this.sectorSafety);
       if (
+        this.lootToPickup === undefined &&
+        meta.scanningInfo?.metaLoot &&
         meta.unit.shieldPotions < meta.constants.maxShieldPotionsInInventory
       ) {
-        this.lootToPickup = closestPotion;
+        const theSafestSector = getTheSafestSector(this.sectorSafety);
+        const sectorLootPotions = meta.scanningInfo.metaLoot
+          .filter(
+            (loot) =>
+              isVectorInSector(loot.direction, theSafestSector.sector) &&
+              isSheldPotion(loot.loot.item)
+          )
+          .sort((a, b) => a.disntance - b.disntance);
+        console.log("LOOT ", sectorLootPotions);
+        if (sectorLootPotions.length > 0) {
+          this.lootToPickup = sectorLootPotions[0];
+        } else {
+          this.lootToPickup = null;
+        }
       }
     }
 
-    console.log("LOOT", JSON.stringify(this.lootToPickup));
     const action = this.lootToPickup
-      ? new ActionOrder.Pickup(this.lootToPickup.id)
+      ? new ActionOrder.Pickup(this.lootToPickup.loot.id)
       : null;
     const moveDirection = this.lootToPickup
-      ? diffVec2(this.lootToPickup.position, meta.unit.position)
+      ? this.lootToPickup.loot.position
+          .clone()
+          .subtract(meta.unit.position)
+          .toVec2()
       : this.moveDirection;
 
     if (this.lootToPickup) {
       const ltp = this.lootToPickup;
-      console.log("MOVING TO LOOT");
       DEBUG_COMMANDS.push(async () => {
-        await DEBUG_INTERFACE?.addCircle(ltp.position, 1, COLOR_RED);
+        await DEBUG_INTERFACE?.addCircle(ltp.loot.position, 1, COLOR_RED);
       });
     }
     return new UnitOrder(
       moveDirection || new Vec2(0, 0),
       moveDirection || new Vec2(0, 0),
-      action
+      // action
+      takeAction(meta, action)
     );
   }
 
+  private isGoingToLoot() {
+    return !!this.lootToPickup;
+  }
+
+  private hasFinishedLooting(lootinAction: Action, meta: StateMeta) {
+    return lootinAction.finishTick > meta.game.currentTick;
+  }
+
   private calculateSafest(meta: StateMeta, sectorSafety: SectorSafety) {
-    const theSafestSectors = getTheSafestSectors(sectorSafety);
-    const theSafestSector = theSafestSectors[0];
-    const safePotions = meta.game.loot
-      .filter((loot) => isSheldPotion(loot.item))
-      .sort(
-        (a, b) =>
-          disntaceVec2Vec(meta.unit.position, a.position) -
-          disntaceVec2Vec(meta.unit.position, b.position)
-      );
+    const theSafestSector = getTheSafestSector(sectorSafety);
 
-    const closestPotion = safePotions.length > 0 ? safePotions[0] : undefined;
+    const safestMoveDirection = angleToVector(
+      theSafestSector.sector + FLEE_SECTOR / 2
+    )
+      .multiplyScalar(meta.constants.maxUnitForwardSpeed)
+      .toVec2();
 
-    const safestMoveDirection = mulVec2byScalar(
-      angleToVec2(theSafestSector + FLEE_SECTOR / 2),
-      meta.constants.maxUnitForwardSpeed
-    );
-
-    return { safestMoveDirection, closestPotion };
+    return safestMoveDirection;
   }
 }

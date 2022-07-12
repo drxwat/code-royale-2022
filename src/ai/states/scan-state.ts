@@ -3,7 +3,13 @@ import { Unit } from "../../model/unit";
 import { UnitOrder } from "../../model/unit-order";
 import { Vec2 } from "../../model/vec2";
 import { FLEE_SECTOR } from "../constants";
-import { Enemy, StateMeta } from "../interfaces";
+import {
+  angleToVector,
+  getTheSafestSector,
+  isSheldPotion,
+  isVectorInSector,
+} from "../helpers/common.helpers";
+import { Enemy, MetaLoot, SectorSafety, StateMeta } from "../interfaces";
 import {
   FLEE_MAX_ENEMIES,
   FLEE_MAX_ENEMIES_HIDING,
@@ -27,10 +33,10 @@ export class UnitScanState extends UnitStratagyState {
   initialRotation: number | undefined;
   rotationThreshold: number | undefined;
   enemies = new Map<number, Enemy>();
+  loot = new Map<number, MetaLoot>();
 
   input(meta: StateMeta): UnitStratagyState {
     const rotation = vec2ToAngle(meta.unit.direction);
-    // console.log(rotation, this.rotationThreshold, this.initialRotation);
     if (
       // INIT
       this.initialRotation === undefined ||
@@ -52,9 +58,11 @@ export class UnitScanState extends UnitStratagyState {
           (a, b) => a.disntance - b.disntance
         )
       );
+      const metaLoot = Array.from(this.loot.values());
       this.strategy.setScanningInfo({
         sectorSafety,
         enemies: Array.from(this.enemies.values()),
+        metaLoot: Array.from(metaLoot),
       });
 
       const fleeMaxEnemies = meta.isHiding
@@ -70,10 +78,11 @@ export class UnitScanState extends UnitStratagyState {
     return this;
   }
 
-  terminateScanning() {}
-
   evaluateState(meta: StateMeta): UnitOrder {
     meta.enemies.forEach((enemy) => this.enemies.set(enemy.unit.id, enemy));
+    meta.metaLoot.forEach((metaLoot) =>
+      this.loot.set(metaLoot.loot.id, metaLoot)
+    );
 
     return new UnitOrder(
       this.strategy.lastOrder?.targetVelocity || new Vec2(0, 0),
@@ -90,9 +99,7 @@ export class UnitScanState extends UnitStratagyState {
     for (let sector = 0; sector < Math.PI * 2; sector += FLEE_SECTOR) {
       sectorEnemies.set(
         sector,
-        enemies.filter(
-          (enemy) => enemy.angle >= sector && enemy.angle < sector + FLEE_SECTOR
-        )
+        enemies.filter((enemy) => isVectorInSector(enemy.direction, sector))
       );
     }
 
@@ -147,16 +154,18 @@ export class UnitScanState extends UnitStratagyState {
       });
     // Zone  Impact
     if (meta.distanceToZoneEdge < ZONE_EDGE_DISTANCE) {
-      const zoneEdgeAngle = vec2ToAngle(meta.zoneEdgeDirection);
-      const zoneEdgeMinSector = zoneEdgeAngle - FLEE_SECTOR * 2;
-      const zoneEdgeMaxSector = zoneEdgeAngle + FLEE_SECTOR * 2;
-
       Array.from(sectorSafety.keys()).map((sector) => {
-        if (sector > zoneEdgeMinSector && sector < zoneEdgeMaxSector) {
+        const sectorMiddleVector = angleToVector(sector + FLEE_SECTOR / 2);
+        const zoneEdgeVector = angleToVector(meta.zoneEdgeAngle);
+        if (
+          Math.acos(sectorMiddleVector.dot(zoneEdgeVector)) <
+          FLEE_SECTOR * 2
+        ) {
           sectorSafety.set(sector, -1);
         }
       });
     }
+    console.log("safety ", sectorSafety);
 
     return sectorSafety;
   }
