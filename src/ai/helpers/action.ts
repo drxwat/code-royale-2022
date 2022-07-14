@@ -1,7 +1,6 @@
 import { ActionOrder } from "../../model/action-order";
 import { StateMeta } from "../interfaces";
 import { SHIELD_MIN_THRESHOLD } from "../variables";
-import { isSheldPotion, itCloseDistance } from "./common.helpers";
 
 export function takeAction(
   meta: StateMeta,

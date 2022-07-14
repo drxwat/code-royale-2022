@@ -1,25 +1,41 @@
 import { ActionOrder } from "../../model/action-order";
 import { UnitOrder } from "../../model/unit-order";
 import { Vec2 } from "../../model/vec2";
-import { StateMeta } from "../interfaces";
+import { DEBUG_COMMANDS, DEBUG_INTERFACE } from "../../my-strategy";
+import { COLOR_BLUE, COLOR_GREEN, COLOR_RED, COLOR_RED_2 } from "../constants";
+import { takeAction } from "../helpers/action";
+import { calculateTimeOfClosestCollition } from "../helpers/common.helpers";
+import { Enemy, StateMeta } from "../interfaces";
 import {
   ATTACK_DURATION,
   FLEE_MAX_ENEMIES,
   FLEE_MAX_ENEMIES_HIDING,
   FLEE_MIN_HP,
 } from "../variables";
-import { diffVec2, lengthVec2 } from "../vector-math";
 import { UnitStratagyState } from "./abstract-state";
 import { UnitFleeState } from "./flee-state";
 import { UnitScanState } from "./scan-state";
-import { UnitWanderState } from "./wander-state";
 
 export class UnitAttackState extends UnitStratagyState {
   debugName = "AttackState";
   attackTimeLimit: number | undefined;
+  targetEnemyLastPosition: Vec2 | undefined;
 
   input(meta: StateMeta): UnitStratagyState {
-    const enemies = meta.scanningInfo?.enemies || meta.enemies;
+    const deadEnemies = new Set(
+      (meta.scanningInfo?.enemies || meta.enemies)
+        .filter((enemy) => enemy.unit.health <= 0)
+        .map((enemy) => enemy.unit.id)
+    );
+    const aliveScanEemies = meta.scanningInfo?.enemies?.filter(
+      (enemy) => !deadEnemies.has(enemy.unit.id)
+    );
+    if (deadEnemies.size > 0) {
+      this.strategy.updateScanningInfo({ enemies: aliveScanEemies });
+    }
+
+    const enemies = aliveScanEemies || meta.enemies;
+
     if (this.attackTimeLimit === undefined) {
       this.attackTimeLimit = meta.time + ATTACK_DURATION;
     }
@@ -31,6 +47,7 @@ export class UnitAttackState extends UnitStratagyState {
     const fleeMaxEnemies = meta.isHiding
       ? FLEE_MAX_ENEMIES_HIDING
       : FLEE_MAX_ENEMIES;
+
     if (enemies.length >= fleeMaxEnemies) {
       console.log("CANT FIGHT TOO MANY ENEMIES");
       return new UnitFleeState(this.strategy);
@@ -39,9 +56,9 @@ export class UnitAttackState extends UnitStratagyState {
       return new UnitScanState(this.strategy);
     }
 
-    if (meta.unit.weapon === null) {
+    if (meta.unit.weapon === null || meta.unit.ammo[meta.unit.weapon] <= 0) {
       console.log("NO WEAPON");
-      return new UnitWanderState(this.strategy);
+      return new UnitFleeState(this.strategy);
     }
     const enemyMinHP = Math.min(...enemies.map((enemy) => enemy.unit.health));
     if (
@@ -57,7 +74,6 @@ export class UnitAttackState extends UnitStratagyState {
   }
 
   evaluateState(meta: StateMeta): UnitOrder {
-    const isEnemyInVisibility = meta.enemies.length > 0;
     const enemies =
       meta.enemies.length > 0
         ? meta.enemies
@@ -66,20 +82,142 @@ export class UnitAttackState extends UnitStratagyState {
       (a, b) => a.disntance - b.disntance
     )[0];
 
-    const dirToEnemy = diffVec2(closestEnemy.unit.position, meta.unit.position);
-    let moveDirection = dirToEnemy;
+    const enemyVelocity = this.targetEnemyLastPosition
+      ? closestEnemy.unit.position
+          .clone()
+          .subtract(this.targetEnemyLastPosition)
+          .toVec2()
+      : undefined;
+    this.targetEnemyLastPosition = closestEnemy.unit.position;
 
-    if (meta.unit.weapon) {
+    // Taking position
+    let moveDirection = closestEnemy.direction
+      .clone()
+      .multiplyScalar(meta.constants.maxUnitForwardSpeed)
+      .toVec2();
+    let isEnemyInRange = false;
+    if (meta.unit.weapon !== null) {
       const weapon = meta.constants.weapons[meta.unit.weapon];
       const range = weapon.projectileLifeTime * weapon.projectileSpeed;
-      if (range > lengthVec2(dirToEnemy)) {
-        moveDirection = new Vec2(0, 0);
+      if (closestEnemy.disntance < range) {
+        isEnemyInRange = true;
+        moveDirection = closestEnemy.direction;
       }
     }
+
+    let shootDirection = closestEnemy.direction;
+    // Aiming if have enemy velocity
+    if (enemyVelocity && meta.unit.weapon !== null && isEnemyInRange) {
+      const weapon = meta.constants.weapons[meta.unit.weapon];
+
+      const bulletSpeed =
+        weapon.projectileSpeed / meta.constants.ticksPerSecond;
+
+      const SHOT_ANTICIPATE_FRAMES = 100;
+      let bestDistance: undefined | number;
+      let bestDirection: Vec2 | undefined;
+      for (let i = 0; i <= SHOT_ANTICIPATE_FRAMES; i += 1) {
+        const nextEnemyPos = closestEnemy.unit.position
+          .clone()
+          .add(enemyVelocity.clone().multiplyScalar(i));
+
+        const bulletPosition = meta.unit.position;
+        const bulletVelocity = nextEnemyPos
+          .clone()
+          .subtract(bulletPosition)
+          .normalize()
+          .multiplyScalar(bulletSpeed)
+          .toVec2();
+
+        const nextBulletPosition = bulletPosition
+          .clone()
+          .add(bulletVelocity.clone().multiplyScalar(i));
+
+        // console.log(
+        //   "maxUnitForwardSpeed ",
+        //   meta.constants.maxUnitForwardSpeed,
+        //   " i ",
+        //   i
+        // );
+        // console.log("bulletSpeed ", bulletSpeed, " i ", i);
+        // console.log("bulletVelocity ", bulletVelocity, " i ", i);
+
+        // console.log("enemySpeed ", enemyVelocity.length(), " i ", i);
+        // console.log("enemyVelocity ", enemyVelocity, " i ", i);
+
+        // console.log("nextBulletPosition ", nextBulletPosition, " i ", i);
+        // console.log("nextEnemyPos ", nextEnemyPos, " i ", i);
+
+        console.log(
+          "distance ",
+          nextBulletPosition.distance(nextEnemyPos),
+          " i ",
+          i
+        );
+
+        const approxDistance = nextBulletPosition.distance(nextEnemyPos);
+        if (!bestDistance || approxDistance < bestDistance) {
+          bestDistance = approxDistance;
+          bestDirection = bulletVelocity;
+        }
+        if (
+          bestDirection &&
+          bestDistance < 4 &&
+          approxDistance > bestDistance
+        ) {
+          shootDirection = bestDirection;
+          break;
+        }
+      }
+      if (!bestDirection) {
+        console.log("NOT FOUND BEST SHOOT DIR");
+      }
+    }
+
+    DEBUG_COMMANDS.push(async () => {
+      if (enemyVelocity) {
+        const nextPos = closestEnemy.unit.position
+          .clone()
+          .add(enemyVelocity.clone().multiplyScalar(10));
+
+        await DEBUG_INTERFACE?.addCircle(nextPos.toVec2(), 1, COLOR_RED);
+      }
+    });
+
+    DEBUG_COMMANDS.push(async () => {
+      await DEBUG_INTERFACE?.addPolyLine(
+        [
+          meta.unit.position,
+          meta.unit.position
+            .clone()
+            .add(shootDirection.clone().multiplyScalar(closestEnemy.disntance))
+            .toVec2(),
+        ],
+        0.2,
+        COLOR_GREEN
+      );
+    });
+
+    DEBUG_COMMANDS.push(async () => {
+      const dirToEnemy = closestEnemy.unit.position
+        .clone()
+        .subtract(meta.unit.position)
+        .toVec2();
+
+      await DEBUG_INTERFACE?.addPolyLine(
+        [
+          meta.unit.position,
+          meta.unit.position.clone().add(dirToEnemy).toVec2(),
+        ],
+        0.2,
+        COLOR_RED_2
+      );
+    });
+
     return new UnitOrder(
       moveDirection,
-      dirToEnemy,
-      new ActionOrder.Aim(isEnemyInVisibility)
+      shootDirection,
+      takeAction(meta, isEnemyInRange ? new ActionOrder.Aim(true) : null)
     );
   }
 }

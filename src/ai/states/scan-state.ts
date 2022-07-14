@@ -13,6 +13,7 @@ import { Enemy, MetaLoot, SectorSafety, StateMeta } from "../interfaces";
 import {
   FLEE_MAX_ENEMIES,
   FLEE_MAX_ENEMIES_HIDING,
+  FLEE_MIN_HP,
   ZONE_EDGE_DISTANCE,
 } from "../variables";
 import {
@@ -26,7 +27,6 @@ import {
 import { UnitStratagyState } from "./abstract-state";
 import { UnitAttackState } from "./attack-state";
 import { UnitFleeState } from "./flee-state";
-import { UnitWanderState } from "./wander-state";
 
 export class UnitScanState extends UnitStratagyState {
   debugName = "ScanState";
@@ -68,12 +68,15 @@ export class UnitScanState extends UnitStratagyState {
       const fleeMaxEnemies = meta.isHiding
         ? FLEE_MAX_ENEMIES_HIDING
         : FLEE_MAX_ENEMIES;
-      if (this.enemies.size >= fleeMaxEnemies) {
+      if (
+        this.enemies.size >= fleeMaxEnemies ||
+        meta.unit.health < meta.constants.unitHealth * FLEE_MIN_HP
+      ) {
         return new UnitFleeState(this.strategy);
-      } else if (this.enemies.size > 0 && meta.unit !== null) {
+      } else if (this.enemies.size > 0) {
         return new UnitAttackState(this.strategy);
       }
-      return new UnitWanderState(this.strategy);
+      return new UnitFleeState(this.strategy);
     }
     return this;
   }
