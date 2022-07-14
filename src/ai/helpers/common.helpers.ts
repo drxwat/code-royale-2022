@@ -27,7 +27,9 @@ export const canPickUpAmmo = (meta: StateMeta) => {
 
 export const isReadyToFight = (meta: StateMeta) => {
   return (
-    meta.unit.weapon === WEAPON_BOW_ID && meta.unit.ammo[WEAPON_BOW_ID] > 0
+    meta.unit.weapon === WEAPON_BOW_ID &&
+    meta.unit.ammo[WEAPON_BOW_ID] > 0 &&
+    meta.unit.shieldPotions > 0
   );
 };
 

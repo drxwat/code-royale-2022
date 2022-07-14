@@ -14,7 +14,7 @@ import {
   COLOR_WARNING,
   FLEE_SECTOR,
 } from "./constants";
-import { getTheSafestSector } from "./helpers/common.helpers";
+import { getTheSafestSector, isReadyToFight } from "./helpers/common.helpers";
 import { Enemy, ScanningInfo, StateMeta } from "./interfaces";
 import { UnitStratagyState } from "./states/abstract-state";
 import { UnitScanState } from "./states/scan-state";
@@ -35,7 +35,10 @@ export class UnitStrategy {
     if (this.hidingTimeLimit === undefined) {
       this.hidingTimeLimit = time + HIDING_TIME_LIMIT;
     }
-    if (this.isHiding && time > this.hidingTimeLimit) {
+    if (
+      (this.isHiding && time > this.hidingTimeLimit) ||
+      isReadyToFight(this.getMeta(unit, game, constants))
+    ) {
       this.isHiding = false;
     }
 

@@ -5,7 +5,7 @@ import { Loot } from "../../model/loot";
 import { UnitOrder } from "../../model/unit-order";
 import { Vec2 } from "../../model/vec2";
 import { DEBUG_COMMANDS, DEBUG_INTERFACE } from "../../my-strategy";
-import { COLOR_RED, FLEE_SECTOR } from "../constants";
+import { COLOR_RED, COLOR_RED_2, FLEE_SECTOR } from "../constants";
 import { takeAction } from "../helpers/action";
 import {
   angleToVector,
@@ -47,6 +47,14 @@ export class UnitFleeState extends UnitStratagyState {
 
     if (this.lootToPickup && meta.unit.action) {
       this.lootinAction = meta.unit.action;
+    }
+    const theSafestSector = getTheSafestSector(this.sectorSafety);
+    if (
+      meta.enemies.some((enemy) =>
+        isVectorInSector(enemy.direction, theSafestSector.sector)
+      )
+    ) {
+      return new UnitScanState(this.strategy);
     }
     if (!this.isGoingToLoot() && meta.time > this.fleeTimeLimit) {
       console.log("SCANNING");
@@ -138,7 +146,7 @@ export class UnitFleeState extends UnitStratagyState {
     if (this.lootToPickup) {
       const ltp = this.lootToPickup;
       DEBUG_COMMANDS.push(async () => {
-        await DEBUG_INTERFACE?.addCircle(ltp.loot.position, 1, COLOR_RED);
+        await DEBUG_INTERFACE?.addCircle(ltp.loot.position, 0.5, COLOR_RED_2);
       });
     }
     return new UnitOrder(

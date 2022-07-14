@@ -133,28 +133,6 @@ export class UnitAttackState extends UnitStratagyState {
           .clone()
           .add(bulletVelocity.clone().multiplyScalar(i));
 
-        // console.log(
-        //   "maxUnitForwardSpeed ",
-        //   meta.constants.maxUnitForwardSpeed,
-        //   " i ",
-        //   i
-        // );
-        // console.log("bulletSpeed ", bulletSpeed, " i ", i);
-        // console.log("bulletVelocity ", bulletVelocity, " i ", i);
-
-        // console.log("enemySpeed ", enemyVelocity.length(), " i ", i);
-        // console.log("enemyVelocity ", enemyVelocity, " i ", i);
-
-        // console.log("nextBulletPosition ", nextBulletPosition, " i ", i);
-        // console.log("nextEnemyPos ", nextEnemyPos, " i ", i);
-
-        console.log(
-          "distance ",
-          nextBulletPosition.distance(nextEnemyPos),
-          " i ",
-          i
-        );
-
         const approxDistance = nextBulletPosition.distance(nextEnemyPos);
         if (!bestDistance || approxDistance < bestDistance) {
           bestDistance = approxDistance;
