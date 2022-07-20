@@ -14,23 +14,14 @@ import {
   COLOR_WARNING,
   FLEE_SECTOR,
 } from "./constants";
-import { getTheSafestSectors } from "./helpers/common.helpers";
+import { getTheSafestSector, isReadyToFight } from "./helpers/common.helpers";
 import { Enemy, ScanningInfo, StateMeta } from "./interfaces";
 import { UnitStratagyState } from "./states/abstract-state";
 import { UnitScanState } from "./states/scan-state";
 import { HIDING_TIME_LIMIT } from "./variables";
-import {
-  addVec2,
-  angleVec2VecRad,
-  diffVec2,
-  disntaceVec2Vec,
-  normalizeVec,
-  vec2ToAngle,
-} from "./vector-math";
 
 export class UnitStrategy {
   private state: UnitStratagyState = new UnitScanState(this);
-  private enemies: Enemy[] = [];
   private scanningInfo: ScanningInfo | undefined;
   public lastOrder: UnitOrder | undefined;
 
@@ -44,17 +35,12 @@ export class UnitStrategy {
     if (this.hidingTimeLimit === undefined) {
       this.hidingTimeLimit = time + HIDING_TIME_LIMIT;
     }
-    if (this.isHiding && time > this.hidingTimeLimit) {
+    if (
+      (this.isHiding && time > this.hidingTimeLimit) ||
+      isReadyToFight(this.getMeta(unit, game, constants))
+    ) {
       this.isHiding = false;
     }
-
-    this.enemies = game.units
-      .filter((gameUnit) => gameUnit.playerId !== game.myId)
-      .map((enemyUnit) => ({
-        unit: enemyUnit,
-        disntance: disntaceVec2Vec(unit.position, enemyUnit.position),
-        angle: angleVec2VecRad(unit.position, enemyUnit.position),
-      }));
 
     this.state = this.state.input(this.getMeta(unit, game, constants));
     this.lastOrder = this.state.evaluateState(
@@ -83,22 +69,48 @@ export class UnitStrategy {
     if (this.scanningInfo?.sectorSafety && moveDirection) {
       currentMovingSector = Array.from(
         this.scanningInfo?.sectorSafety?.keys()
-      ).find((sector) => sector + FLEE_SECTOR > vec2ToAngle(moveDirection));
+      ).find((sector) => sector + FLEE_SECTOR > moveDirection.angle());
     }
+    const enemies = game.units
+      .filter((gameUnit) => gameUnit.playerId !== game.myId)
+      .map((enemyUnit) => ({
+        unit: enemyUnit,
+        disntance: unit.position.clone().distance(enemyUnit.position),
+        direction: enemyUnit.position
+          .clone()
+          .subtract(unit.position)
+          .normalize()
+          .toVec2(),
+        angle: enemyUnit.position.clone().subtract(unit.position).angle(),
+      }));
+
+    const metaLoot = game.loot.map((loot) => ({
+      loot,
+      disntance: unit.position.clone().distance(loot.position),
+      direction: loot.position
+        .clone()
+        .subtract(unit.position)
+        .normalize()
+        .toVec2(),
+      angle: loot.position.clone().subtract(unit.position).angle(),
+    }));
+
     return {
       unit,
       game,
-      enemies: this.enemies,
+      enemies,
+      metaLoot,
       constants,
       time: game.currentTick / constants.ticksPerSecond,
       scanningInfo: this.scanningInfo,
       isHiding: this.isHiding,
       distanceToZoneEdge:
         game.zone.currentRadius -
-        disntaceVec2Vec(game.zone.currentCenter, unit.position),
-      zoneEdgeDirection: normalizeVec(
-        diffVec2(unit.position, game.zone.currentCenter)
-      ),
+        game.zone.currentCenter.distance(unit.position),
+      zoneEdgeAngle: unit.position
+        .clone()
+        .subtract(game.zone.currentCenter)
+        .angle(),
       currentMovingSector,
     };
   }
@@ -133,11 +145,13 @@ export class UnitStrategy {
 
   private displayMoveDirection(meta: StateMeta) {
     const moveDirection = this.lastOrder?.targetDirection;
-
     if (moveDirection) {
       DEBUG_COMMANDS.push(async () => {
         await DEBUG_INTERFACE?.addPolyLine(
-          [meta.unit.position, addVec2(meta.unit.position, moveDirection)],
+          [
+            meta.unit.position,
+            meta.unit.position.clone().add(moveDirection).toVec2(),
+          ],
           0.2,
           COLOR_BLUE
         );
@@ -153,11 +167,11 @@ export class UnitStrategy {
     const sectorSafety = this.scanningInfo?.sectorSafety;
     if (moveDirection && sectorSafety && DEBUG_INTERFACE) {
       const sectorSafetyTupple = Array.from(sectorSafety);
-      const theSafestSectors = getTheSafestSectors(sectorSafety);
+      const theSafestSector = getTheSafestSector(sectorSafety);
 
       sectorSafetyTupple.forEach(([sector, safety]) => {
         let sectorColor = COLOR_SAFE;
-        if (safety === theSafestSectors[0]) {
+        if (safety === theSafestSector.safety) {
           sectorColor = COLOR_SAFEST;
         } else if (safety < 0) {
           sectorColor = COLOR_DEADLY;
@@ -174,11 +188,7 @@ export class UnitStrategy {
             meta.constants.viewDistance,
             sector,
             sector + FLEE_SECTOR,
-            safety === theSafestSectors[0]
-              ? COLOR_SAFEST
-              : safety >= 1
-              ? COLOR_SAFE
-              : COLOR_DANGER
+            sectorColor
           );
         });
       });
